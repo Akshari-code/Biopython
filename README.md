@@ -1,3 +1,4 @@
 # Biopython
-First GitHub repository"\n"
-Name: Akshari
+First GitHub repository.
+<br>
+Author: Akshari
