@@ -2,6 +2,8 @@ from Bio import Entrez, SeqIO
 from Bio.Seq import Seq
 from Bio.SeqUtils import gc_fraction
 import pandas as pd
+import re
+from Bio.SeqUtils import gc_fraction, nt_search
 Entrez.email = "dm.akshari20@gmail.com"
 
 def fetch_genbank_record(accession_id):
@@ -158,4 +160,58 @@ if __name__ == "__main__":
     batch_df = batch_scan_mutations(cds_seq, sample_variants)
     print("\n--- Batch Variant Scan Report ---")
     print(batch_df.to_string(index=False))
+def search_motif(dna_seq_str, motif_str):
+    """
+    Finds all 1-based starting positions of a target motif (including overlaps
+    and IUPAC ambiguous codes) inside a DNA sequence.
+    """
+    dna_clean = str(dna_seq_str).upper().strip()
+    motif_clean = str(motif_str).upper().strip()
+
+    if not motif_clean:
+        return []
+
+    results = nt_search(dna_clean, motif_clean)
+    # results[0] is the motif pattern; results[1:] are 0-based indices
+    return [idx + 1 for idx in results[1:]]
+
+def find_all_orfs(dna_seq_str, min_protein_length=10):
+    """
+    Scans all 6 reading frames (3 forward, 3 reverse complement) for Open Reading Frames
+    starting with 'M' and ending with a stop codon, filtered by minimum amino acid length.
+    """
+    dna_seq = Seq(str(dna_seq_str).upper().strip())
+    pattern = re.compile(r'(?=(M[^*]*\*))')
+    orf_results = []
+    strands = [
+        ("Forward (+)", dna_seq),
+        ("Reverse (-)", dna_seq.reverse_complement())
+    ]
+
+    for strand_label, seq in strands:
+        for frame in range(3):
+            translated = str(seq[frame:].translate())
+            for match in pattern.findall(translated):
+                protein = match[:-1]  # Drop trailing '*'
+                if len(protein) >= min_protein_length:
+                    orf_results.append({
+                        "Strand": strand_label,
+                        "Frame": frame + 1,
+                        "Length_AA": len(protein),
+                        "Protein_Sequence": protein
+                    })
+
+    return pd.DataFrame(orf_results)
+if __name__ == "__main__":
+    test_record = fetch_genbank_record("NM_000518")
+    cds_seq = extract_coding_sequence(test_record)
+
+    # 1. Test Motif Finder
+    motif_hits = search_motif(cds_seq, "CTGAGG")
+    print(f"\nMotif 'CTGAGG' found at 1-based positions: {motif_hits}")
+
+    # 2. Test 6-Frame ORF Scanner
+    orfs_df = find_all_orfs(cds_seq, min_protein_length=20)
+    print("\n--- Detected Open Reading Frames (>= 20 AA) ---")
+    print(orfs_df.to_string(index=False))
 
