@@ -214,4 +214,48 @@ if __name__ == "__main__":
     orfs_df = find_all_orfs(cds_seq, min_protein_length=20)
     print("\n--- Detected Open Reading Frames (>= 20 AA) ---")
     print(orfs_df.to_string(index=False))
+import warnings
+from urllib.error import HTTPError, URLError
+from Bio import BiopythonWarning, Entrez, SeqIO
 
+# Suppress partial codon warnings during 6-frame ORF scanning
+warnings.simplefilter("ignore", BiopythonWarning)
+
+def clean_dna_sequence(raw_seq):
+    """Strips whitespace/newlines and validates standard DNA characters."""
+    cleaned = "".join(str(raw_seq).upper().split())
+    if not cleaned:
+        raise ValueError("The provided DNA sequence is empty.")
+
+    valid_bases = set("ATGCN")
+    invalid_chars = set(cleaned) - valid_bases
+    if invalid_chars:
+        raise ValueError(f"Sequence contains invalid characters: {', '.join(sorted(invalid_chars))}")
+    return cleaned
+
+def fetch_genbank_record(accession_id):
+    """Fetches a GenBank record from NCBI with clean network and ID error handling."""
+    acc_clean = str(accession_id).strip()
+    if not acc_clean:
+        raise ValueError("Please enter a valid NCBI Accession ID (e.g., NM_000518).")
+
+    try:
+        with Entrez.efetch(db="nucleotide", id=acc_clean, rettype="gb", retmode="text") as handle:
+            record = SeqIO.read(handle, "genbank")
+        return record
+    except HTTPError:
+        raise ValueError(f"Accession ID '{acc_clean}' was not found on NCBI. Check the ID and try again.")
+    except URLError:
+        raise ValueError("Network error: Could not connect to NCBI servers. Check your internet connection.")
+    except Exception as e:
+        raise ValueError(f"Failed to parse NCBI record for '{acc_clean}': {e}")
+
+if __name__ == "__main__":
+    try:
+        fetch_genbank_record("FAKE_ID_999")  
+    except ValueError as e:
+        print(f"GenBank Error: {e}")
+    try:
+        clean_dna_sequence("ATGC1234")
+    except ValueError as e:
+        print(f"DNA Sequence Error: {e}")
