@@ -1,6 +1,7 @@
 from Bio import Entrez, SeqIO
 from Bio.Seq import Seq
 from Bio.SeqUtils import gc_fraction
+import pandas as pd
 Entrez.email = "dm.akshari20@gmail.com"
 
 def fetch_genbank_record(accession_id):
@@ -87,3 +88,74 @@ if __name__ == "__main__":
     print("\n--- Mutation Analysis Report ---")
     print(f"Classification: {mutation_report['impact']}")
     print(f"Summary:        {mutation_report['detail']}")
+import io
+from Bio import SeqIO
+
+def parse_fasta_text(fasta_content):
+    """
+    Parses raw FASTA formatted text into a Biopython SeqRecord.
+    Works seamlessly with both local file reads and Streamlit file uploads.
+    """
+    fasta_io = io.StringIO(fasta_content.strip())
+    records = list(SeqIO.parse(fasta_io, "fasta"))
+
+    if not records:
+        raise ValueError("No valid FASTA sequence found. Make sure the text starts with a '>' header line.")
+
+    # Return the first sequence record in the file
+    return records[0]
+if __name__ == "__main__":
+    sample_fasta = """
+    >Custom_Test_Gene
+    ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTG
+    """
+    custom_record = parse_fasta_text(sample_fasta)
+    metrics = analyze_sequence_metrics(custom_record.seq)
+    mut_report = simulate_point_mutation(custom_record.seq, 20, "T")
+
+    print(f"Loaded Custom ID: {custom_record.id}")
+    print(f"Length: {metrics['length']} bp | GC Content: {metrics['gc_content']}%")
+    print(f"Mutation Check: {mut_report['impact']} -> {mut_report['detail']}")
+def batch_scan_mutations(dna_seq_str, mutations_list):
+    """
+    Scans a list of (position_1based, new_base) tuples against a DNA sequence
+    and returns a clean Pandas DataFrame summarizing the impact of each variant.
+    """
+    results = []
+
+    for pos, new_base in mutations_list:
+        try:
+            report = simulate_point_mutation(dna_seq_str, pos, new_base)
+            results.append({
+                "Position": report["position"],
+                "Original_Base": report["original_base"],
+                "Mutated_Base": report["mutated_base"],
+                "Impact": report["impact"],
+                "Summary": report["detail"]
+            })
+        except ValueError as e:
+            # Record invalid positions cleanly without crashing the whole batch
+            results.append({
+                "Position": pos,
+                "Original_Base": "-",
+                "Mutated_Base": new_base,
+                "Impact": "Error",
+                "Summary": str(e)
+            })
+    return pd.DataFrame(results)
+if __name__ == "__main__":
+    test_record = fetch_genbank_record("NM_000518")
+    cds_seq = extract_coding_sequence(test_record)
+
+    # Test a batch of mutations: (1-based position, new base)
+    sample_variants = [
+        (9, "T"),     # Silent mutation in Codon 3 (CAT -> CAC/CAT)
+        (20, "T"),    # Missense mutation (Sickle Cell: GAG -> GTG)
+        (118, "T"),   # Nonsense mutation (Creates a premature stop codon)
+        (999, "G")    # Out-of-bounds error check
+    ]
+
+    batch_df = batch_scan_mutations(cds_seq, sample_variants)
+    print("\n--- Batch Variant Scan Report ---")
+    print(batch_df.to_string(index=False))
+
