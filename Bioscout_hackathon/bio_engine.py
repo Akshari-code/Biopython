@@ -4,6 +4,7 @@ from Bio.SeqUtils import gc_fraction
 import pandas as pd
 import re
 from Bio.SeqUtils import gc_fraction, nt_search
+from Bio.Align import PairwiseAligner
 Entrez.email = "dm.akshari20@gmail.com"
 
 def fetch_genbank_record(accession_id):
@@ -259,3 +260,49 @@ if __name__ == "__main__":
         clean_dna_sequence("ATGC1234")
     except ValueError as e:
         print(f"DNA Sequence Error: {e}")
+
+def align_two_sequences(seq1_str, seq2_str):
+    """
+    Performs global pairwise alignment between two DNA sequences and returns
+    the alignment score, percent identity, and formatted visual alignment.
+    """
+    s1 = clean_dna_sequence(seq1_str)
+    s2 = clean_dna_sequence(seq2_str)
+
+    aligner = PairwiseAligner()
+    aligner.mode = "global"
+    aligner.match_score = 1.0
+    aligner.mismatch_score = -1.0
+    aligner.open_gap_score = -2.0
+    aligner.extend_gap_score = -0.5
+
+    # Get the top optimal alignment
+    alignments = aligner.align(s1, s2)
+    best_alignment = alignments
+
+    # Count exact character matches in the formatted alignment
+    aligned_lines = str(best_alignment).splitlines()
+    # Line 1 contains '|' for exact matches, '.' for mismatches, and ' ' for gaps
+    match_symbols = aligned_lines[1] if len(aligned_lines) > 1 else ""
+    exact_matches = match_symbols.count("|")
+    alignment_length = len(match_symbols)
+
+    percent_identity = round((exact_matches / alignment_length) * 100, 2) if alignment_length > 0 else 0.0
+
+    return {
+        "score": best_alignment.score,
+        "percent_identity": percent_identity,
+        "matches": exact_matches,
+        "alignment_length": alignment_length,
+        "visual_alignment": str(best_alignment)
+    }
+if __name__ == "__main__":
+    ref_seq = "ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCC"
+    mut_seq = "ATGGTGCATCTGACTCCTGTGGAGAAGTCTGCCGTACTGCC"  # Contains Sickle Cell A->T and 1 base deletion
+
+    aln_report = align_two_sequences(ref_seq, mut_seq)
+    print(f"\n--- Pairwise Alignment Report ---")
+    print(f"Alignment Score:  {aln_report['score']}")
+    print(f"Percent Identity: {aln_report['percent_identity']}% ({aln_report['matches']}/{aln_report['alignment_length']} bp)")
+    print("\nVisual Alignment:")
+    print(aln_report["visual_alignment"])
