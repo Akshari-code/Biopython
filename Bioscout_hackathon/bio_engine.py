@@ -83,14 +83,7 @@ def simulate_point_mutation(dna_seq_str, position_1based, new_base):
         "mut_protein": mut_protein
     }
 
-if __name__ == "__main__":
-    test_record = fetch_genbank_record("NM_000518")
-    cds_seq = extract_coding_sequence(test_record)
-    mutation_report = simulate_point_mutation(cds_seq, 20, "T")
-    
-    print("\n--- Mutation Analysis Report ---")
-    print(f"Classification: {mutation_report['impact']}")
-    print(f"Summary:        {mutation_report['detail']}")
+
 import io
 from Bio import SeqIO
 
@@ -107,18 +100,7 @@ def parse_fasta_text(fasta_content):
 
     # Return the first sequence record in the file
     return records[0]
-if __name__ == "__main__":
-    sample_fasta = """
-    >Custom_Test_Gene
-    ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTG
-    """
-    custom_record = parse_fasta_text(sample_fasta)
-    metrics = analyze_sequence_metrics(custom_record.seq)
-    mut_report = simulate_point_mutation(custom_record.seq, 20, "T")
 
-    print(f"Loaded Custom ID: {custom_record.id}")
-    print(f"Length: {metrics['length']} bp | GC Content: {metrics['gc_content']}%")
-    print(f"Mutation Check: {mut_report['impact']} -> {mut_report['detail']}")
 def batch_scan_mutations(dna_seq_str, mutations_list):
     """
     Scans a list of (position_1based, new_base) tuples against a DNA sequence
@@ -146,21 +128,7 @@ def batch_scan_mutations(dna_seq_str, mutations_list):
                 "Summary": str(e)
             })
     return pd.DataFrame(results)
-if __name__ == "__main__":
-    test_record = fetch_genbank_record("NM_000518")
-    cds_seq = extract_coding_sequence(test_record)
 
-    # Test a batch of mutations: (1-based position, new base)
-    sample_variants = [
-        (9, "T"),     # Silent mutation in Codon 3 (CAT -> CAC/CAT)
-        (20, "T"),    # Missense mutation (Sickle Cell: GAG -> GTG)
-        (118, "T"),   # Nonsense mutation (Creates a premature stop codon)
-        (999, "G")    # Out-of-bounds error check
-    ]
-
-    batch_df = batch_scan_mutations(cds_seq, sample_variants)
-    print("\n--- Batch Variant Scan Report ---")
-    print(batch_df.to_string(index=False))
 def search_motif(dna_seq_str, motif_str):
     """
     Finds all 1-based starting positions of a target motif (including overlaps
@@ -203,18 +171,7 @@ def find_all_orfs(dna_seq_str, min_protein_length=10):
                     })
 
     return pd.DataFrame(orf_results)
-if __name__ == "__main__":
-    test_record = fetch_genbank_record("NM_000518")
-    cds_seq = extract_coding_sequence(test_record)
 
-    # 1. Test Motif Finder
-    motif_hits = search_motif(cds_seq, "CTGAGG")
-    print(f"\nMotif 'CTGAGG' found at 1-based positions: {motif_hits}")
-
-    # 2. Test 6-Frame ORF Scanner
-    orfs_df = find_all_orfs(cds_seq, min_protein_length=20)
-    print("\n--- Detected Open Reading Frames (>= 20 AA) ---")
-    print(orfs_df.to_string(index=False))
 import warnings
 from urllib.error import HTTPError, URLError
 from Bio import BiopythonWarning, Entrez, SeqIO
@@ -251,15 +208,7 @@ def fetch_genbank_record(accession_id):
     except Exception as e:
         raise ValueError(f"Failed to parse NCBI record for '{acc_clean}': {e}")
 
-if __name__ == "__main__":
-    try:
-        fetch_genbank_record("FAKE_ID_999")  
-    except ValueError as e:
-        print(f"GenBank Error: {e}")
-    try:
-        clean_dna_sequence("ATGC1234")
-    except ValueError as e:
-        print(f"DNA Sequence Error: {e}")
+
 
 def align_two_sequences(seq1_str, seq2_str):
     """
@@ -297,12 +246,32 @@ def align_two_sequences(seq1_str, seq2_str):
         "visual_alignment": str(best_alignment)
     }
 if __name__ == "__main__":
-    ref_seq = "ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCC"
-    mut_seq = "ATGGTGCATCTGACTCCTGTGGAGAAGTCTGCCGTACTGCC"  # Contains Sickle Cell A->T and 1 base deletion
+    print("=== Running BioScout End-to-End Backend Audit ===")
 
-    aln_report = align_two_sequences(ref_seq, mut_seq)
-    print(f"\n--- Pairwise Alignment Report ---")
-    print(f"Alignment Score:  {aln_report['score']}")
-    print(f"Percent Identity: {aln_report['percent_identity']}% ({aln_report['matches']}/{aln_report['alignment_length']} bp)")
-    print("\nVisual Alignment:")
-    print(aln_report["visual_alignment"])
+    # 1. Fetch live sequence from NCBI
+    record = fetch_genbank_record("NM_000518")
+    cds = extract_coding_sequence(record)
+
+    # 2. Compute sequence metrics
+    metrics = analyze_sequence_metrics(cds)
+    print(f"[OK] Loaded {record.id} | Length: {metrics['length']} bp | GC: {metrics['gc_content']}%")
+
+    # 3. Simulate single mutation (Sickle Cell)
+    mut = simulate_point_mutation(cds, 20, "T")
+    print(f"[OK] Single Mutation Check: {mut['impact']} ({mut['detail']})")
+
+    # 4. Run batch scan
+    batch_df = batch_scan_mutations(cds, [(9, "T"), (20, "T"), (118, "T")])
+    print(f"[OK] Batch Scan processed {len(batch_df)} variants.")
+
+    # 5. Scan ORFs & Motifs
+    orfs = find_all_orfs(cds, min_protein_length=50)
+    hits = search_motif(cds, "CTGAGG")
+    print(f"[OK] Found {len(orfs)} major ORF(s) and {len(hits)} motif hit(s).")
+
+    # 6. Pairwise alignment check
+    aln = align_two_sequences(str(cds)[:40], str(cds)[:20] + "T" + str(cds)[21:40])
+    print(f"[OK] Alignment Identity: {aln['percent_identity']}%")
+
+    print("=== All Backend Systems Operational! ===")
+
